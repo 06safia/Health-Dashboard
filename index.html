@@ -1,0 +1,67 @@
+<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Health Dashboard</title>
+<style>
+ body{font-family:sans-serif;background:#f5f5f5;color:#111;margin:0;padding:16px}
+ .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+ .card{background:#ffffff;border-radius:12px;padding:16px;text-align:center}
+ .val{font-size:32px;font-weight:bold}
+ .ok{color:#4caf50}.bad{color:#f44336}
+ button{padding:10px 18px;margin:4px;border:0;border-radius:8px;font-size:16px}
+ input{width:55px}
+</style></head><body>
+<h2>Patient Monitor</h2>
+<div class="grid">
+  <div class="card">Heart Rate<div id="hr" class="val">--</div>bpm</div>
+  <div class="card">SpO2<div id="spo2" class="val">--</div>%</div>
+  <div class="card">Temp<div id="temp" class="val">--</div>°C</div>
+  <div class="card">Peltier<div id="pel" class="val">--</div><span id="mode"></span></div>
+</div>
+
+<h3>Peltier Control</h3>
+<button onclick="ctl('manual','on')">ON</button>
+<button onclick="ctl('manual','off')">OFF</button>
+<button onclick="ctl('auto','off')">AUTO</button>
+
+<h3>Notification Range</h3>
+HR: <input id="hr_lo"> - <input id="hr_hi"><br><br>
+SpO2: <input id="spo2_lo"> - <input id="spo2_hi"><br><br>
+Temp: <input id="temp_lo"> - <input id="temp_hi"><br><br>
+<button onclick="saveSet()">Save</button>
+
+<h3>Events</h3><ul id="ev"></ul>
+
+<script>
+const DB = "https://heat-stroke-prevention-s-c9e6b-default-rtdb.firebaseio.com";
+let S = {hr:{lo:50,hi:120}, spo2:{lo:92,hi:100}, temp:{lo:35,hi:38}};
+const $ = id => document.getElementById(id);
+
+async function loadSettings(){
+  const s = await (await fetch(DB+"/settings.json")).json();
+  if(s) S = s;
+  for(const k of ["hr","spo2","temp"]){ $(k+"_lo").value=S[k].lo; $(k+"_hi").value=S[k].hi; }
+}
+async function saveSet(){
+  for(const k of ["hr","spo2","temp"]) S[k]={lo:+$(k+"_lo").value, hi:+$(k+"_hi").value};
+  await fetch(DB+"/settings.json",{method:"PUT",body:JSON.stringify(S)});
+  alert("Saved");
+}
+async function ctl(mode,cmd){
+  await fetch(DB+"/control.json",{method:"PUT",body:JSON.stringify({mode,cmd})});
+}
+function show(id,v,k){
+  $(id).textContent=v;
+  $(id).className="val "+((v<S[k].lo||v>S[k].hi)?"bad":"ok");
+}
+async function refresh(){
+  const d = await (await fetch(DB+"/live.json")).json();
+  if(d){
+    show("hr",d.hr,"hr"); show("spo2",d.spo2,"spo2"); show("temp",d.temp,"temp");
+    $("pel").textContent = d.pel ? "ON" : "OFF";
+    $("mode").textContent = d.mode.toUpperCase();
+  }
+  const e = await (await fetch(DB+'/events.json?orderBy="$key"&limitToLast=10')).json();
+  $("ev").innerHTML = e ? Object.values(e).reverse().map(x=>"<li>"+x.msg+"</li>").join("") : "";
+}
+loadSettings(); refresh(); setInterval(refresh, 3000);
+</script></body></html>
